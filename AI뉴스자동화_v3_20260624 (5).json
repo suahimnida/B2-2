@@ -1,0 +1,934 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://www.yna.co.kr/rss/news.xml",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -192,
+        464
+      ],
+      "id": "76d1eadc-9401-4c86-9143-e6bf51df30ab",
+      "name": "YNA",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        0,
+        464
+      ],
+      "id": "21d22cd7-8a8b-4725-99c7-d78377d7c134",
+      "name": "XML"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        0,
+        656
+      ],
+      "id": "60a23b44-e2af-4961-870b-79abc3813229",
+      "name": "XML1"
+    },
+    {
+      "parameters": {
+        "url": "https://www.hankyung.com/feed/all-news",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -192,
+        656
+      ],
+      "id": "dceade38-8636-4d6d-928e-a6e8cad7bcfd",
+      "name": "Hankyung",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        16,
+        848
+      ],
+      "id": "96a8ebe1-70f3-4951-bfd2-ee82480270bf",
+      "name": "XML2"
+    },
+    {
+      "parameters": {
+        "url": "https://www.fnnews.com/rss/r20/fn_realnews_all.xml",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -192,
+        848
+      ],
+      "id": "e6691128-44f6-40fc-8c03-7f50f3448a0e",
+      "name": "fnnews",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "if (items.length === 0) return [];\n\n// RSS 오류 마커 필터링\nconst validItems = items.filter(item => !item.json._rssError);\nif (validItems.length === 0) return [];\n\nfunction normalizeTitle(title) {\n  return String(title || \"\")\n    .replace(/\\[[^\\]]*\\]/g, \"\")\n    .replace(/[^\\w가-힣\\s]/g, \"\")\n    .replace(/\\s+/g, \" \")\n    .trim()\n    .slice(0, 35);\n}\n\nconst seenLinks = new Set();\nconst seenTitles = new Set();\nconst unique = [];\n\nfor (const item of validItems) {\n  const link = item.json.link || \"\";\n  const titleKey = normalizeTitle(item.json.title);\n\n  if (!link || !titleKey) continue;\n  if (seenLinks.has(link)) continue;\n  if (seenTitles.has(titleKey)) continue;\n\n  seenLinks.add(link);\n  seenTitles.add(titleKey);\n  unique.push(item);\n}\n\nconst groups = {};\n\nfor (const item of unique) {\n  const source = item.json.source || \"unknown\";\n  if (!groups[source]) groups[source] = [];\n  groups[source].push(item);\n}\n\nconst sources = Object.keys(groups);\nconst mixed = [];\nconst maxLen = Math.max(...sources.map(source => groups[source].length));\n\nfor (let i = 0; i < maxLen; i++) {\n  for (const source of sources) {\n    if (groups[source][i]) {\n      mixed.push(groups[source][i]);\n    }\n  }\n}\n\nreturn mixed.slice(0, 80);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        656
+      ],
+      "id": "090bcad9-7c8a-4aa3-a24e-c5d3d8734ac2",
+      "name": "Deduplicate News"
+    },
+    {
+      "parameters": {
+        "jsCode": "const articles = items.map(item => ({\n  title: item.json.title || \"\",\n  link: item.json.link || \"\",\n  description: item.json.description || \"\",\n  pubDate: item.json.pubDate || \"\",\n  source: item.json.source || \"\"\n}));\n\nreturn [\n  {\n    json: {\n      articlesText: JSON.stringify(articles, null, 2)\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        656
+      ],
+      "id": "6626cb0d-05c2-4d18-b5a4-9d15a95e8fb5",
+      "name": "Aggregate News"
+    },
+    {
+      "parameters": {
+        "jsCode": "let raw = $json.output?.[0]?.content?.[0]?.text || $json.text || $json.output || \"\";\n\nif (typeof raw !== \"string\") {\n  raw = JSON.stringify(raw);\n}\n\nraw = raw\n  .replace(/```json/g, \"\")\n  .replace(/```/g, \"\")\n  .trim();\n\nconst parsed = JSON.parse(raw);\n\nreturn parsed.map(article => ({\n  json: {\n    title: article.title || \"\",\n    link: article.link || \"\",\n    source: article.source || \"\",\n    publishedAt: article.publishedAt || \"\",\n    reason: article.reason || \"\"\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1648,
+        656
+      ],
+      "id": "8bed6420-49d9-41d0-8989-91ca8b2b6b62",
+      "name": "Parse Top 3"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.link }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1856,
+        656
+      ],
+      "id": "8cef63dd-c836-487e-b15e-bb53525c85b4",
+      "name": "기사 원문 가져오기",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const copyrightPatterns = [\n  \"무단전재\", \"재배포 금지\", \"무단 복제\", \"무단복제\",\n  \"저작권자\", \"무단 전재\", \"기사 원문의 저작권\",\n  \"무단전재 및 재배포\", \"저작권법에 의해\"\n];\n\nreturn items.map(item => {\n  const html = String(item.json.data || item.json.body || \"\").toLowerCase();\n  const hasCopyright = copyrightPatterns.some(p => html.includes(p));\n\n  const prev = $('Parse Top 3').all();\n  const link = item.json.link || \"\";\n  const original = prev.find(o => o.json.link === link) || {};\n\n  return {\n    json: {\n      title: original.json?.title || item.json.title || \"\",\n      link: link,\n      source: original.json?.source || item.json.source || \"\",\n      publishedAt: original.json?.publishedAt || item.json.publishedAt || \"\",\n      reason: original.json?.reason || item.json.reason || \"\",\n      hasCopyright: hasCopyright\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2064,
+        656
+      ],
+      "id": "8ed92581-f340-45c2-9aa6-c3efe3728e42",
+      "name": "저작권 검사"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "copyright-check",
+              "leftValue": "={{ $json.hasCopyright }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2256,
+        656
+      ],
+      "id": "b05d58b6-6b3d-4720-8442-340c55bdb59e",
+      "name": "저작권 분기"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "당신은 뉴스 요약 전문가입니다.\n\n뉴스를 3문장 이내로 요약하세요.\n\nJSON 금지\n마크다운 금지\n설명 금지\n\n요약문만 출력하세요."
+            },
+            {
+              "content": "=제목:\n{{ $json.title }}\n\n선정 이유:\n{{ $json.reason }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        2496,
+        560
+      ],
+      "id": "c485bcc3-ca77-43c7-b910-781f8d8941fc",
+      "name": "AI 요약",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "openAiApi": {
+          "id": "fnIOSrxYJnAdIPIX",
+          "name": "OpenAI account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => ({\n  json: {\n    title: item.json.title || \"\",\n    link: item.json.link || \"\",\n    source: item.json.source || \"\",\n    publishedAt: item.json.publishedAt || \"\",\n    reason: item.json.reason || \"\",\n    summary: \"⚠️ 저작권 보호 기사 - AI 요약 불가. 제목만 기록합니다.\",\n    copyrightWarning: true\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2496,
+        768
+      ],
+      "id": "494353de-10ec-4143-93da-2e22b59f4f34",
+      "name": "제목만 사용"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=당신은 뉴스 편집국 데스크입니다.\n\n아래 기사 목록에서 오늘 가장 중요한 뉴스 3건만 선정하세요.\n\n선정 기준\n- 국민 생활 영향\n- 경제 영향\n- 국제 영향\n- 장기 파급력\n- 동일 사건 중복 제거\n- 정치적 편향 금지\n\n반드시 JSON 배열만 출력하세요.\n\n예시:\n\n[\n  {\n    \"title\": \"기사 제목\",\n    \"link\": \"기사 링크\",\n    \"source\": \"언론사\",\n    \"publishedAt\": \"원본 publishedAt 값 그대로\",\n    \"reason\": \"선정 이유\"\n  }\n]"
+            },
+            {
+              "content": "=기사 목록:\n\n{{ $json.articlesText }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1360,
+        656
+      ],
+      "id": "885955ee-40c6-4605-a0a6-3bde9f364c40",
+      "name": "Top3 선정",
+      "credentials": {
+        "openAiApi": {
+          "id": "WUGSEqfJx2QqniPY",
+          "name": "OpenAI account 2"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allPreviousItems = $('Topic Filter').all();\n\nreturn items.map(item => {\n  const link = item.json.link || \"\";\n  const original = allPreviousItems.find(prev => prev.json.link === link);\n\n  return {\n    json: {\n      title: item.json.title || \"\",\n      link,\n      source: item.json.source || original?.json.source || \"\",\n      publishedAt:\n        item.json.publishedAt ||\n        original?.json.publishedAt ||\n        original?.json.pubDate ||\n        \"\",\n      summary:\n        item.json.summary ||\n        item.json.output?.[0]?.content?.[0]?.text ||\n        item.json.content?.[0]?.text ||\n        \"\",\n      dedupeKey: link\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2736,
+        640
+      ],
+      "id": "e2d986d6-50ad-4662-a7c2-d2cbd6063861",
+      "name": "Prepare For Notion"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "bf3dff9e-1cca-4f22-a0e3-40f3eb5f7e7a",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const groups = {};\n\nfor (const item of items) {\n  const source = item.json.source || \"unknown\";\n  if (!groups[source]) groups[source] = [];\n  groups[source].push(item);\n}\n\nconst result = [];\nconst sources = Object.keys(groups);\nconst maxRounds = Math.max(...sources.map(s => groups[s].length));\n\nfor (let i = 0; i < maxRounds; i++) {\n  for (const source of sources) {\n    if (groups[source][i]) {\n      result.push(groups[source][i]);\n    }\n  }\n}\n\nreturn result.slice(0, 30);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        656
+      ],
+      "id": "e4460352-2029-4d57-aad7-c6da5b358bc2",
+      "name": "Balance Sources"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      topic: \"경제\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        208
+      ],
+      "id": "a0c2cc69-283f-40d7-b251-68fe76634752",
+      "name": "Set Topic"
+    },
+    {
+      "parameters": {
+        "jsCode": "const topic = $('Set Topic').first().json.topic;\n\nconst keywordMap = {\n  경제: [\"경제\",\"주식\",\"증시\",\"금리\",\"환율\",\"투자\",\"부동산\"],\n  IT: [\"AI\",\"반도체\",\"로봇\",\"배터리\",\"클라우드\",\"데이터센터\"],\n  국제: [\"미국\",\"중국\",\"일본\",\"유럽\",\"중동\",\"러시아\"],\n  정치: [\"대통령\",\"국회\",\"정부\",\"선거\"],\n  생활: [\"교육\",\"복지\",\"교통\",\"의료\",\"물가\"]\n};\n\nconst keywords = keywordMap[topic] || [];\n\nreturn items.filter(item => {\n  const text =\n    (item.json.title || \"\") +\n    \" \" +\n    (item.json.description || \"\");\n\n  return keywords.some(k => text.includes(k));\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        656
+      ],
+      "id": "98ae74ff-cc3a-4830-a25b-2df8e4ae4386",
+      "name": "Topic Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "const articles = $json.rss.channel.item;\n\nreturn articles.map(article => ({\n  json: {\n    title: article.title || \"\",\n    link: article.link || \"\",\n    description: article.description || \"\",\n    publishedAt: article.pubDate || \"\",\n    source: \"연합뉴스\",\n    uniqueKey: article.link || article.guid?._ || article.guid || article.title\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        464
+      ],
+      "id": "d04a83fd-fe13-4ffe-9ab0-c21412b2b6f1",
+      "name": "Normalize YNA"
+    },
+    {
+      "parameters": {
+        "jsCode": "const articles = $json.rss.channel.item;\n\nreturn articles.map(article => ({\n  json: {\n    title: article.title || \"\",\n    link: article.link || \"\",\n    description: article.description || \"\",\n    publishedAt: article.pubDate || \"\",\n    source: \"한국경제\",\n    uniqueKey: article.link || article.guid?._ || article.guid || article.title\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        656
+      ],
+      "id": "2f52ac44-28cc-4b81-b7a4-acd3b31abbc3",
+      "name": "Normalize Hankyung"
+    },
+    {
+      "parameters": {
+        "jsCode": "const articles = $json.rss.channel.item;\n\nreturn articles.map(article => ({\n  json: {\n    title: article.title || \"\",\n    link: article.link || \"\",\n    description: article.description || \"\",\n    publishedAt: article.pubDate || \"\",\n    source: \"파이낸셜뉴스\",\n    uniqueKey: article.link || article.guid?._ || article.guid || article.title\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        848
+      ],
+      "id": "6fb4c41d-026f-4b36-8f4e-2a1e92f40506",
+      "name": "Normalize fnnews"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        448,
+        640
+      ],
+      "id": "f9d1c5a1-4e3e-453b-a1da-44fe95861807",
+      "name": "Merge Sources"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "388c1da2-1436-8058-b3af-ea27edb83c25",
+          "mode": "list",
+          "cachedResultName": "뉴스자동화",
+          "cachedResultUrl": "https://app.notion.com/p/388c1da214368058b3afea27edb83c25"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "제목|title",
+              "title": "={{ $json.title }}"
+            },
+            {
+              "key": "요약문|rich_text",
+              "textContent": "={{ $json.summary }}"
+            },
+            {
+              "key": "원문링크|rich_text",
+              "textContent": "={{ $json.link }}"
+            },
+            {
+              "key": "발행일시|rich_text",
+              "textContent": "={{ $json.publishedAt }}"
+            },
+            {
+              "key": "언론사|rich_text",
+              "textContent": "={{ $json.source }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        2944,
+        640
+      ],
+      "id": "e2fdf359-9f5a-480b-add6-c6a521b22735",
+      "name": "Save to Notion",
+      "credentials": {
+        "notionOAuth2Api": {
+          "id": "MaxZE4pWScmYZFU5",
+          "name": "Notion OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const errorSource = '연합뉴스 (YNA)';\nconst errorTime = new Date().toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'});\nconst errorMessage = `3회 재시도 후에도 RSS 피드 수집 실패 (${errorTime}) — 해당 소스를 건너뜁니다.`;\n\nconsole.error(`⚠️ [RSS 오류] ${errorSource}: ${errorMessage}`);\n\nreturn [{\n  json: {\n    _rssError: true,\n    errorSource,\n    errorTime: new Date().toISOString(),\n    errorMessage\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        464
+      ],
+      "id": "e7f8a9b0-c1d2-4e3f-a456-789012345678",
+      "name": "YNA 오류 처리"
+    },
+    {
+      "parameters": {
+        "jsCode": "const errorSource = '한국경제 (Hankyung)';\nconst errorTime = new Date().toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'});\nconst errorMessage = `3회 재시도 후에도 RSS 피드 수집 실패 (${errorTime}) — 해당 소스를 건너뜁니다.`;\n\nconsole.error(`⚠️ [RSS 오류] ${errorSource}: ${errorMessage}`);\n\nreturn [{\n  json: {\n    _rssError: true,\n    errorSource,\n    errorTime: new Date().toISOString(),\n    errorMessage\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        656
+      ],
+      "id": "f8a9b0c1-d2e3-4f5a-b567-890123456789",
+      "name": "Hankyung 오류 처리"
+    },
+    {
+      "parameters": {
+        "jsCode": "const errorSource = '파이낸셜뉴스 (fnnews)';\nconst errorTime = new Date().toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'});\nconst errorMessage = `3회 재시도 후에도 RSS 피드 수집 실패 (${errorTime}) — 해당 소스를 건너뜁니다.`;\n\nconsole.error(`⚠️ [RSS 오류] ${errorSource}: ${errorMessage}`);\n\nreturn [{\n  json: {\n    _rssError: true,\n    errorSource,\n    errorTime: new Date().toISOString(),\n    errorMessage\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        848
+      ],
+      "id": "a9b0c1d2-e3f4-4a5b-c678-901234567890",
+      "name": "fnnews 오류 처리"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "388c1da2-1436-8058-b3af-ea27edb83c25",
+          "mode": "list",
+          "cachedResultName": "뉴스자동화",
+          "cachedResultUrl": "https://app.notion.com/p/388c1da214368058b3afea27edb83c25"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "제목|title",
+              "title": "={{ '⚠️ [RSS 오류] ' + $json.errorSource + ' 수집 실패' }}"
+            },
+            {
+              "key": "요약문|rich_text",
+              "textContent": "={{ $json.errorMessage }}"
+            },
+            {
+              "key": "원문링크|rich_text",
+              "textContent": ""
+            },
+            {
+              "key": "발행일시|rich_text",
+              "textContent": "={{ $json.errorTime }}"
+            },
+            {
+              "key": "언론사|rich_text",
+              "textContent": "시스템 오류"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -200,
+        1050
+      ],
+      "id": "b0c1d2e3-f4a5-4b6c-d789-012345678901",
+      "name": "RSS 오류 알림 (Notion)",
+      "credentials": {
+        "notionOAuth2Api": {
+          "id": "MaxZE4pWScmYZFU5",
+          "name": "Notion OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "YNA": {
+      "main": [
+        [
+          {
+            "node": "XML",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "YNA 오류 처리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "XML": {
+      "main": [
+        [
+          {
+            "node": "Normalize YNA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "XML1": {
+      "main": [
+        [
+          {
+            "node": "Normalize Hankyung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hankyung": {
+      "main": [
+        [
+          {
+            "node": "XML1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hankyung 오류 처리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "XML2": {
+      "main": [
+        [
+          {
+            "node": "Normalize fnnews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fnnews": {
+      "main": [
+        [
+          {
+            "node": "XML2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "fnnews 오류 처리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate News": {
+      "main": [
+        [
+          {
+            "node": "Balance Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate News": {
+      "main": [
+        [
+          {
+            "node": "Top3 선정",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Top 3": {
+      "main": [
+        [
+          {
+            "node": "기사 원문 가져오기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "기사 원문 가져오기": {
+      "main": [
+        [
+          {
+            "node": "저작권 검사",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "저작권 검사": {
+      "main": [
+        [
+          {
+            "node": "저작권 분기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "저작권 분기": {
+      "main": [
+        [
+          {
+            "node": "제목만 사용",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI 요약",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI 요약": {
+      "main": [
+        [
+          {
+            "node": "Prepare For Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "제목만 사용": {
+      "main": [
+        [
+          {
+            "node": "Prepare For Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Top3 선정": {
+      "main": [
+        [
+          {
+            "node": "Parse Top 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare For Notion": {
+      "main": [
+        [
+          {
+            "node": "Save to Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Balance Sources": {
+      "main": [
+        [
+          {
+            "node": "Topic Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Topic": {
+      "main": [
+        [
+          {
+            "node": "Hankyung",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "YNA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "fnnews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Topic Filter": {
+      "main": [
+        [
+          {
+            "node": "Aggregate News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize YNA": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Hankyung": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Normalize fnnews": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge Sources": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YNA 오류 처리": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS 오류 알림 (Notion)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hankyung 오류 처리": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "RSS 오류 알림 (Notion)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fnnews 오류 처리": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 2
+          },
+          {
+            "node": "RSS 오류 알림 (Notion)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "191b2b9f-6cce-4d2d-827a-830d4a55ddf4",
+  "meta": {
+    "instanceId": "fb6660460a9c592da2c37732719fb77cc248d0b41b7d6fc980b55f5d86989d4f"
+  },
+  "nodeGroups": [],
+  "id": "R2r96e2j50fbfN9y",
+  "tags": []
+}
